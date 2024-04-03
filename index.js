@@ -126,10 +126,11 @@ app.use((req, res) => {
   res.status(404).send({ error: 'unknown endpoint' });
 });
 
-app.listen(3001, () => {
-  console.log('La aplicacion se esta ejecutando en el puerto 3001');
-});
-
 const getPersonById = (id) => {
   return persons.find((person) => person.id === id);
 };
+
+const PORT = process.env.PORT || 3001
+app.listen(PORT, () => {
+  console.log('La aplicacion se esta ejecutando en el puerto 3001');
+});
