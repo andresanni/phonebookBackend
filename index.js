@@ -6,6 +6,9 @@ const app = express();
 
 app.use(cors());
 
+//Middleware para servir contenido estatico
+app.use(express.static('build'));
+
 //Middleware para leer el json en el body de la solicitud en req.body
 app.use(express.json());
 
