@@ -1,6 +1,8 @@
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
+const EntryModel = require('./models/EntryModel');
+const Entry = require('./models/EntryModel');
 
 const app = express();
 
@@ -16,7 +18,7 @@ app.use(express.json());
 app.use(
   morgan(function (tokens, req, res) {
     return [
-      tokens.method(req, res),      
+      tokens.method(req, res),
       tokens.url(req, res),
       tokens.status(req, res),
       tokens.res(req, res, 'content-length'),
@@ -28,112 +30,100 @@ app.use(
   })
 );
 
-let persons = [
-  {
-    id: 1,
-    name: 'Arto Hellas',
-    number: '040-123456',
-  },
-  {
-    id: 2,
-    name: 'Ada Lovelace',
-    number: '39-44-5323523',
-  },
-  {
-    id: 3,
-    name: 'Dan Abramov',
-    number: '12-43-234345',
-  },
-  {
-    id: 4,
-    name: 'Mary Poppendieck',
-    number: '39-23-6423122',
-  },
-];
-
 app.get('/api/persons', (req, res) => {
-  res.send(persons);
+  EntryModel.find().then((allEntries) => res.send(allEntries));
 });
 
-app.get('/api/persons/:id', (req, res) => {
-  const id = Number(req.params.id);
+app.get('/api/persons/:id', (req, res, next) => {
+  const id = req.params.id;
 
-  if (isNaN(id)) {
-    return res.status(400).send('El id debe ser un numero');
-  }
-
-  const person = getPersonById(id);
-
-  if (!person) {
-    return res.status(404).send('No existe registro con ese id');
-  }
-
-  res.send(person);
+  EntryModel.findById(id)
+    .then((person) => {
+      if (person) {
+        res.json(person);
+      } else {
+        res.status(404).send();
+      }
+    })
+    .catch((error) => next(error));
 });
 
 app.get('/info', (req, res) => {
-  const htmlFragment = `
+  EntryModel.countDocuments({}).then((count) => {
+    const htmlFragment = `
     <html>
         <body>
-            <p>Phonebook has info for ${persons.length} people</p>
+            <p>Phonebook has info for ${count} people</p>
             <p>${new Date().toUTCString()}</p>
         </body>
     </html>`;
-
-  res.send(htmlFragment);
+    res.send(htmlFragment);
+  });
 });
 
-app.post('/api/persons', (req, res) => {
-  const personInReq = req.body;
-  const randomId = Math.floor(Math.random() * 1000) + 1;
+app.post('/api/persons', (req, res, next) => {
+  const entryToSave = req.body;
 
-  if (
-    !Object.prototype.hasOwnProperty.call(personInReq, 'name') ||
-    !Object.prototype.hasOwnProperty.call(personInReq, 'number')
-  ) {
-    return res
-      .status(400)
-      .send({ error: 'Object must have a name and a number' });
-  }
-  const personToSave = {
-    id: randomId,
-    ...personInReq,
-  };
+  EntryModel.findOne({ name: entryToSave.name }).then((person) => {
+    if (person) {
+      return res.status(409).send({ error: 'name must be unique' });
+    } else {
+      const entry = new EntryModel({
+        name: entryToSave.name,
+        number: entryToSave.number,
+      });
 
-  if (persons.find((person) => person.name === personToSave.name)) {
-    return res.status(409).send({ error: 'name must be unique' });
-  }
-
-  persons.push(personToSave);
-  res.status(201).send(personToSave);
+      entry
+        .save(entry)
+        .then((savedEntry) => {
+          res.status(201).json(savedEntry);
+        })
+        .catch((error) => next(error));
+    }
+  });
 });
 
-app.delete('/api/persons/:id', (req, res) => {
-  const id = Number(req.params.id);
+app.delete('/api/persons/:id', (req, res, next) => {
+  const id = req.params.id;
 
-  if (isNaN(id)) {
-    return res.status(400).send('El id debe ser un numero');
-  }
+  Entry.findByIdAndDelete(id)
+    .then(() => {
+      res.status(204).end();
+    })
+    .catch((error) => next(error));
+});
 
-  const person = getPersonById(id);
+app.put('/api/persons/:id', (req, res, next) => {
+  const entryData = req.body;
+  const id = req.params.id;
 
-  if (!person) {
-    return res.status(404).send('No existe registro con ese id');
-  }
-
-  persons = persons.filter((p) => p.id != id);
-  res.send(`Registro con id ${id} eliminado con exito`);
+  Entry.findByIdAndUpdate(id, entryData, { new: true, runValidators: true, context: 'query' })
+    .then((updatedEntry) => {
+      res.json(updatedEntry);
+    })
+    .catch((error) => {
+      next(error);
+    });
 });
 
 app.use((req, res) => {
   res.status(404).send({ error: 'unknown endpoint' });
 });
 
-const getPersonById = (id) => {
-  return persons.find((person) => person.id === id);
+const errorHandler = (error, req, res, next) => {
+  console.log('..:Error Handler Middleware:..');
+  console.log(error.name);
+
+  if (error.name === 'CastError') {
+    return res.status(400).json({ error: 'Unkown id' });
+  } else if (error.name === 'ValidationError') {
+    return res.status(400).json({ error: error.message });
+  }
 };
 
-const PORT = process.env.PORT || 3001
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log('La aplicacion se esta ejecutando en el puerto 3001');
 });
